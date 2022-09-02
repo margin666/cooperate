@@ -1,20 +1,24 @@
 import {io} from 'socket.io-client'
-const socket = io('ws://localhost:8022')
+import type {Socket} from 'socket.io-client'
 
-socket.on('connect', () => {
-    // console.log(socket.id)
-    
-    
-    
-})
 
-socket.on('push', (data) => {
-    console.log(data)
-})
 
-setTimeout(() => {
-    socket.emit('msg',{
-        data: 'aas'
-    })
-}, 1000)
+type callback = () =>void
+export class Server{
+    private instance:Socket;
+    constructor(url:string){
+        this.instance = io(url)
+    }
+    close(){
+        this.instance.disconnect()
+    }
+    emit(type:string, data:any){
+        this.instance.emit(type,JSON.stringify(data))
+    }
+    on(type:string, callback:callback){
+        this.instance.on(type, callback)
+    }
+}
+
+
 

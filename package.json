@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@codemirror/collab": "^6.0.0",
     "@codemirror/lang-javascript": "^6.0.2",
     "@types/codemirror": "^5.60.5",
     "codemirror": "^6.0.1",

@@ -19,7 +19,7 @@
     </aside>
     <div class="body">
         <article class="btns">
-            
+
             <div class="search">
                 <i></i>
                 <input placeholder="请输入房间ID" type="text">
@@ -31,42 +31,78 @@
                 <i></i>
                 <input placeholder="请输入你的昵称" type="text">
             </div>
+            <div class="status">
+                <div @click="changeStatus" id="switch" class="switch"
+                    :style="{ backgroundColor: status ? '#42E83A' : '#FF493F' }">
+                    <div :style="{ marginLeft: status ? '26px' : '1px', }" class="block"></div>
+                </div>
+                <label>{{ status ? '连接' : '断开' }}</label>
+            </div>
         </article>
         <div class="edit" ref="edit"></div>
     </div>
     <Dialog @createHourse="putHourseInfo" @changeStatus="changeDialogStatus" :open="(dialogStatus as boolean)"></Dialog>
 </template>
 <script lang="ts" setup>
-import { EditorView, basicSetup, } from 'codemirror';
+import { EditorView, basicSetup } from 'codemirror';
 import { indentWithTab } from "@codemirror/commands";
 import { keymap } from "@codemirror/view";
-import { ref, nextTick } from 'vue';
+import { ref, nextTick, watchEffect } from 'vue';
 import { pick } from '../theme/pick';
-import Dialog from './Dialog.vue'
-
+import Dialog from './Dialog.vue';
+import { Server } from '../socket/index'
+import { useUser } from '../utils/other'
 // @ts-ignore
 import { javascript } from "@codemirror/lang-javascript";
-const edit = ref<HTMLDivElement>()
+import { EditorSelection, EditorState } from '@codemirror/state';
+import {collab} from '@codemirror/collab';
+const edit = ref<HTMLDivElement>();
+
+let view:EditorView | null = null
+
+
+
 
 nextTick(() => {
-    let view = new EditorView({
-        doc: '',
+    
+    view = new EditorView({
+        doc: '这是',
         extensions: [basicSetup, pick, keymap.of([indentWithTab]), javascript()],
         parent: edit.value,
 
 
     })
+   
 })
+
+const status = ref<boolean>(false)
 
 const dialogStatus = ref<Boolean>(false)
 const createHourse = () => {
     changeDialogStatus(true)
 }
-const putHourseInfo = (name:string) => {
-    console.log(name)
-}
-const changeDialogStatus = (status:boolean) => {
+
+const changeDialogStatus = (status: boolean) => {
     dialogStatus.value = status
+}
+
+
+let serve:Server | null = null
+function changeStatus(){
+    status.value = !status.value
+    if(status.value){
+        serve = new Server('ws://localhost:8022/system')
+    }else{
+        serve?.close()
+    }
+}
+
+
+const putHourseInfo = (name: string) => {
+    if(!serve)return
+    serve.emit('createHourse', {
+        hourseName: name
+    })
 }
 </script>
 <style lang="scss" scoped>
@@ -93,8 +129,6 @@ header {
     font-weight: 600;
     font-style: italic;
     color: $fontColor;
-    // background-color: $info2;
-    // background-image: linear-gradient( to right, $info2, $info3);
     font-size: 4rem;
     line-height: 10vh;
     padding: 0 20px;
@@ -114,15 +148,12 @@ aside {
     }
 
     &::-webkit-scrollbar-track {
-        // width: 10px;
         background-color: rgba(47, 21, 50, 0.62);
-        // background-color: rgba(42, 231, 241, 0.68);
         border-radius: 3px;
         overflow: hidden;
     }
 
     &::-webkit-scrollbar-thumb {
-        // background-color: #3366FF;
         border-radius: 3px;
         @include bgc();
     }
@@ -173,10 +204,6 @@ aside {
             box-shadow: inset 0px 0px 15px 1px rgba(255, 255, 255, 0.291);
         }
 
-        // display: flex;
-
-        // align-items: center;
-        // justify-content: space-between;
         >.title {
             display: flex;
             align-items: center;
@@ -195,12 +222,8 @@ aside {
             line-height: 20px;
             max-height: 70px;
             padding: 10px 0;
-            // flex: 2;
             overflow: hidden;
             text-overflow: ellipsis;
-            // white-space: nowrap;
-
-
         }
 
         .box {
@@ -208,7 +231,6 @@ aside {
             display: flex;
             align-items: flex-end;
             justify-content: space-between;
-            // margin-top: 20px;
 
             >.people {
                 font-weight: 600;
@@ -218,12 +240,7 @@ aside {
                 // flex: 1;
             }
 
-
-
             button {
-                // width: 50px;
-                // flex: 1;
-                // float: right;
                 font-size: 1rem;
                 color: #fff;
                 border-radius: 4px;
@@ -244,10 +261,6 @@ aside {
             }
         }
 
-
-
-
-
     }
 }
 
@@ -266,15 +279,10 @@ aside {
         padding: 0 20px;
 
         >.user {
-            // width: 250px;
-            // border-radius: 20px;
             margin-left: 20px;
             display: flex;
             align-items: center;
-            // justify-content: space-between;
-            // padding: 5px 8px;
             overflow: hidden;
-            // background-color: #fff;
 
             >i {
 
@@ -310,7 +318,7 @@ aside {
             justify-content: space-between;
             // padding: 5px 8px;
             overflow: hidden;
-            
+
 
             >i {
 
@@ -355,6 +363,39 @@ aside {
             +& {
                 margin-left: 20px;
             }
+        }
+
+        .status {
+            margin-left: 20px;
+            width: 100px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+
+            .switch {
+                width: 50px;
+                height: 20px;
+                border-radius: 10px;
+                // background-color: #fff;
+                transition: all 0.5s;
+
+                .block {
+                    margin-top: 1px;
+                    width: 23px;
+                    height: 18px;
+                    border-radius: 10px;
+                    background-color: #2A0D2E;
+                    margin-left: 1px;
+                    transition: all 0.5s;
+                }
+            }
+
+            label {
+                font-size: 1.4rem;
+                color: white;
+            }
+
         }
     }
 
