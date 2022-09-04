@@ -32,11 +32,18 @@
                 <input placeholder="请输入你的昵称" type="text">
             </div>
             <div class="status">
-                <div @click="changeStatus" id="switch" class="switch"
-                    :style="{ backgroundColor: status ? '#42E83A' : '#FF493F' }">
-                    <div :style="{ marginLeft: status ? '26px' : '1px', }" class="block"></div>
+                <div @click="changeConnectStatus" id="switch" class="switch"
+                    :style="{ backgroundColor: connectStatus ? '#42E83A' : '#FF493F' }">
+                    <div :style="{ marginLeft: connectStatus ? '26px' : '1px', }" class="block"></div>
                 </div>
-                <label>{{ status ? '连接' : '断开' }}</label>
+                <label>{{ connectStatus ? '连接' : '断开' }}</label>
+            </div>
+            <div class="status">
+                <div @click="changeSyncStatus" id="switch" class="switch"
+                    :style="{ backgroundColor: syncStatus ? '#42E83A' : '#FF493F' }">
+                    <div :style="{ marginLeft: syncStatus ? '26px' : '1px', }" class="block"></div>
+                </div>
+                <label>{{ syncStatus ? '同步' : '暂停' }}</label>
             </div>
         </article>
         <div class="edit" ref="edit"></div>
@@ -55,51 +62,74 @@ import { useUser } from '../utils/other'
 // @ts-ignore
 import { javascript } from "@codemirror/lang-javascript";
 import { EditorSelection, EditorState } from '@codemirror/state';
-import {collab} from '@codemirror/collab';
+import { collab } from '@codemirror/collab';
+import { setListener, pack } from '../edit/index'
 const edit = ref<HTMLDivElement>();
+let serve: Server | null = null
 
-let view:EditorView | null = null
+let view: EditorView | null = null
+let startVersion = 0
+let updates = pack([], (item) => {
+
+    if (startVersion !== item.version) {
+        startVersion = item.version
+    }
+    serve?.emit('pushDates', {
+        version: startVersion,
+        item: item.update.slice(-1)
+    })
 
 
+
+})
+const plugin = setListener(updates)
 
 
 nextTick(() => {
-    
+
     view = new EditorView({
         doc: '这是',
-        extensions: [basicSetup, pick, keymap.of([indentWithTab]), javascript()],
+        extensions: [basicSetup, collab({ startVersion }), pick, keymap.of([indentWithTab]), javascript(), plugin],
         parent: edit.value,
 
 
     })
-   
+
 })
 
-const status = ref<boolean>(false)
+const connectStatus = ref<boolean>(false)
+
+const changeConnectStatus = function () {
+    connectStatus.value = !connectStatus.value
+    if (connectStatus.value) {
+        serve = new Server('ws://localhost:8022/system')
+    } else {
+        serve?.close()
+    }
+}
+const syncStatus = ref<boolean>(false)
+const changeSyncStatus = function () {
+    syncStatus.value = !syncStatus.value
+}
+
+
 
 const dialogStatus = ref<Boolean>(false)
-const createHourse = () => {
-    changeDialogStatus(true)
-}
 
 const changeDialogStatus = (status: boolean) => {
     dialogStatus.value = status
 }
-
-
-let serve:Server | null = null
-function changeStatus(){
-    status.value = !status.value
-    if(status.value){
-        serve = new Server('ws://localhost:8022/system')
-    }else{
-        serve?.close()
-    }
+const createHourse = () => {
+    changeDialogStatus(true)
 }
 
 
+
+
+
+
 const putHourseInfo = (name: string) => {
-    if(!serve)return
+    if (!serve) return
     serve.emit('createHourse', {
         hourseName: name
     })

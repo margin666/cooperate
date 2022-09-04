@@ -13,6 +13,20 @@ const io = new Server(httpServer, {
 
 const hourseMap = new Map()
 
+const versionStore = {
+    'room': new Map()
+}
+function storeInsert(room, item){
+    let store = versionStore[room]
+    const {version, item:updates} = item
+    if(store.has(version)){
+        let s = store.get(version)
+        s.push(updates)
+    }else{
+        store.set(version, [updates])
+    }
+    console.log(versionStore)
+}
 ////////////////////////////////////////////////////////////
 
 class Lister {
@@ -27,6 +41,9 @@ class Lister {
 const ser = new Lister('system')
 ser.connect(socket => {
     console.log('有链接')
+    socket.on('pushDates', item => {
+        storeInsert('room', JSON.parse(item))
+    })
 
     socket.on('createHourse', data => {
         const {hourseName} = JSON.parse(data)

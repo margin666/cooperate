@@ -2,72 +2,66 @@ import { Update, receiveUpdates, sendableUpdates, collab, getSyncedVersion } fro
 import { basicSetup } from "codemirror"
 import { ChangeSet, EditorState, Text } from "@codemirror/state"
 import { EditorView, ViewPlugin, ViewUpdate } from "@codemirror/view"
-import { ref } from 'vue'
 
-let View = init('a' as unknown as HTMLDivElement)
+type updatesType = Array<{
+    version: number,
+    update: ReturnType<typeof sendableUpdates>
+}>
 
-function init(dom: HTMLDivElement) {
-    let view: EditorView | null = null;
-    let state = EditorState.create({
-        doc: '',
-        extensions: [basicSetup,]
-    })
-    view = new EditorView({
-        state,
-        parent: dom
-    })
-    return view
-}
-
-function getVersion(roomId: string) {
-    return {
-        version: 0,
-        doc: 'qqq'
-    }
-}
-
-
-
-
-
-function getUpdates() {
-    // updates => updates.map(u => ({
-    //     changes: ChangeSet.fromJSON(u.changes),
-    //     clientID: u.clientID
-    //   }))
-}
-
-
-function insertRoom(roomId: string) {
-    const { version, doc } = getVersion('001')
-    const plugin1 = collab({ startVersion: version })
-
-}
-
-
-let plugin = ViewPlugin.fromClass(class {
-    constructor(private view: EditorView) {
-
-    }
-    update(update: ViewUpdate) {
-        if (update.docChanged) {
-            this.push()
+export function pack(target:[], callback?:(arr:any)=>void){
+    return new Proxy(target, {
+        set(target, key:string, value:any){
+            if(key !=='length'){
+                callback&&callback(value)
+            }
+            
+            const result = Reflect.set(target, key, value)
+            return result
         }
-    }
-    push() {
-        // {type, version, updates}
-        const updates = sendableUpdates(View.state)
-        const version = getSyncedVersion(View.state)
-        // 推送给服务端 request
+    })
+}
 
-        if (sendableUpdates(View.state).length) {
-            this.push()
+export function setListener(updates: updatesType) {
+    const extension = ViewPlugin.fromClass(class {
+        constructor(private view: EditorView) {
+
         }
-    }
+        update(update: ViewUpdate) {
+            if (update.docChanged) {
+                this.push()
+            }
+        }
+        push() {
+            const update = sendableUpdates(this.view.state)
+            const version = getSyncedVersion(this.view.state)
+            updates.push({
+                version,
+                update
+            })
+        }
 
-    pull() {
-        const version = getSyncedVersion(View.state)
-        const updates = getUpdates()
-        View.dispatch(receiveUpdates(View.state, updates))
-    }
-})
+        pull(){
+            const version = getSyncedVersion(this.view.state)
+            // 远程获取改变
+            const updates:Readonly<Update>[] = []
+
+            let update:readonly Update[] = updates.map(el => {
+                return {
+                    changes:el.changes.toJSON(),
+                    clientID:el.clientID  
+                }
+            })
+
+            this.view.dispatch(receiveUpdates(this.view.state, update) )
+
+        }
+
+    })
+
+    return extension
+}
+
+
+
+
+
