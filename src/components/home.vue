@@ -61,38 +61,68 @@ import { Server } from '../socket/index'
 import { useUser } from '../utils/other'
 // @ts-ignore
 import { javascript } from "@codemirror/lang-javascript";
-import { EditorSelection, EditorState } from '@codemirror/state';
-import { collab } from '@codemirror/collab';
+import { EditorSelection, EditorState, ChangeSet } from '@codemirror/state';
+import { collab, Update, getSyncedVersion, receiveUpdates, sendableUpdates } from '@codemirror/collab';
 import { setListener, pack } from '../edit/index'
 const edit = ref<HTMLDivElement>();
-let serve: Server | null = null
-
+let serve = new Server('ws://localhost:8022/system')
 let view: EditorView | null = null
 let startVersion = 0
-let updates = pack([], (item) => {
 
+let updates = pack([], (item) => {
+    if(item.update.length === 0)return
     if (startVersion !== item.version) {
         startVersion = item.version
     }
-    serve?.emit('pushDates', {
+    
+
+    const update = item.update.slice(-1)
+    serve.emit('pushDate', {
         version: startVersion,
-        item: item.update.slice(-1)
+        updates: {
+            clientID: update[0].clientID,
+            changes: update[0].changes.toJSON()
+        }
     })
+    // serve.emit('test', '3')
 
 
 
 })
-const plugin = setListener(updates)
+
+
+
+
+const plugin = setListener(updates, (v) => {
+    const version = getSyncedVersion(v.state)
+    serve.emit('getdates', { version: version, })
+
+
+})
 
 
 nextTick(() => {
-
     view = new EditorView({
         doc: '这是',
         extensions: [basicSetup, collab({ startVersion }), pick, keymap.of([indentWithTab]), javascript(), plugin],
         parent: edit.value,
+    })
 
+    serve.on('dates', (res: string) => {
+        let { states } = JSON.parse(res)
 
+        // let updates: readonly Update[] = states.map(el => {
+        //     return {
+        //         changes: ChangeSet.fromJSON(el.changes),
+        //         clientID: el.clientID
+        //     }
+        // })
+        
+
+        view?.dispatch(receiveUpdates(view.state, [{
+                changes: ChangeSet.fromJSON(states!.changes),
+                clientID: states!.clientID
+            }]))
     })
 
 })
@@ -128,11 +158,10 @@ const createHourse = () => {
 
 
 
+
 const putHourseInfo = (name: string) => {
     if (!serve) return
-    serve.emit('createHourse', {
-        hourseName: name
-    })
+    changeDialogStatus(false)
 }
 </script>
 <style lang="scss" scoped>

@@ -8,23 +8,23 @@ type updatesType = Array<{
     update: ReturnType<typeof sendableUpdates>
 }>
 
-export function pack(target:[], callback?:(arr:any)=>void){
+export function pack(target: [], callback?: (arr: any) => void) {
     return new Proxy(target, {
-        set(target, key:string, value:any){
-            if(key !=='length'){
-                callback&&callback(value)
+        set(target, key: string, value: any) {
+            if (key !== 'length') {
+                callback && callback(value)
             }
-            
+
             const result = Reflect.set(target, key, value)
             return result
         }
     })
 }
 
-export function setListener(updates: updatesType) {
+export function setListener(updates: updatesType, cb:(v:EditorView) => void) {
     const extension = ViewPlugin.fromClass(class {
         constructor(private view: EditorView) {
-
+            this.pull()
         }
         update(update: ViewUpdate) {
             if (update.docChanged) {
@@ -40,19 +40,24 @@ export function setListener(updates: updatesType) {
             })
         }
 
-        pull(){
-            const version = getSyncedVersion(this.view.state)
+        pull() {
+            // const version = getSyncedVersion(this.view.state)
             // 远程获取改变
-            const updates:Readonly<Update>[] = []
+            cb(this.view)
+            // while (1) {
+            //     const updates = await cb(version)
 
-            let update:readonly Update[] = updates.map(el => {
-                return {
-                    changes:el.changes.toJSON(),
-                    clientID:el.clientID  
-                }
-            })
+            //     let update: readonly Update[] = updates.map(el => {
+            //         return {
+            //             changes: el.changes.toJSON(),
+            //             clientID: el.clientID
+            //         }
+            //     })
+            //     this.view.dispatch(receiveUpdates(this.view.state, update))
+            // }
 
-            this.view.dispatch(receiveUpdates(this.view.state, update) )
+
+
 
         }
 

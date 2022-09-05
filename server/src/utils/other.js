@@ -1,7 +1,7 @@
-export const useHourse = function(){
-    const name = 'hourse'
-    const result = `${name}-${parseInt(Math.random().toString().slice(2,9)).toString(16)}`
-    return result
+export const useHourse = function(namespace){
+    return function(){
+        return`${namespace}-${parseInt(Math.random().toString().slice(2,9)).toString(16)}`
+    }
 }
 
 export const useUser = function(id){

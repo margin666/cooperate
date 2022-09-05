@@ -3,7 +3,7 @@ import type {Socket} from 'socket.io-client'
 
 
 
-type callback = () =>void
+type callbackType = (data:string) =>void
 export class Server{
     private instance:Socket;
     constructor(url:string){
@@ -15,7 +15,7 @@ export class Server{
     emit(type:string, data:any){
         this.instance.emit(type,JSON.stringify(data))
     }
-    on(type:string, callback:callback){
+    on(type:string, callback:callbackType){
         this.instance.on(type, callback)
     }
 }
