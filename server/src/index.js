@@ -11,20 +11,6 @@ const io = new Server(httpServer, {
         origin: "*"
     }
 })
-
-const hourseMap = new Map()
-
-const versionStore = []
-function storeInsert(item){
-    let store = versionStore['room']
-    const {version, item:updates} = item
-    if(store.has(version)){
-        let s = store.get(version)
-        s.push(updates)
-    }else{
-        store.set(version, [updates])
-    }
-}
 ////////////////////////////////////////////////////////////
 
 class Lister {
@@ -34,35 +20,91 @@ class Lister {
     connect(callback) {
         this.instance.on('connection', callback)
     }
-    emit(method, content){
+    emit(method, content) {
         this.instance.emit(method, JSON.stringify(content))
     }
 }
 
+
+class Store {
+    constructor() {
+        this.instance = new Map()
+    }
+    createRoom(roomID, admin,roomname, version = 0, doc = '') {
+        
+        const obj = {
+            id: roomID,
+            roomname
+        }
+        this.instance.set(obj, {
+            admin,
+            version,
+            doc,
+            peoples: [],
+            updates: []
+        })
+        return obj
+    }
+    getStore(roomID){
+        for(let arr of this.instance){
+            if(arr[0].id === roomID){
+                return arr[1]
+            }
+        }
+        return []
+    }
+}
+
+
+
+const centerStore = new Store()
+const socketStore = new Map()
 const ser = new Lister('system')
 ser.connect(socket => {
     console.log('有链接')
-    socket.on('pushDate', data => {
-        const {updates, version} = JSON.parse(data)
-        versionStore.push(updates)
-        // console.log(versionStore)
-        ser.emit('dates', {states:updates})
-        // storeInsert({version,item})
-        
+    socket.emit('isconnection', true)
+    socket.on('createRoom', res => {
+        const { roomName, version,admin } = JSON.parse(res)
+        const roomID = getRoomID()
+        let roomInfo = centerStore.createRoom(roomID, admin, roomName, version)
+        socket.join(roomID)
+        socket.emit('roomInfo', JSON.stringify(roomInfo))
+
+    })
+    socket.on('StoreInfo', res => {
+        const {roomID} = JSON.parse(res)
+        let store = centerStore.getStore(roomID)
+        socketStore.set(socket, store)
+        socket.emit('getStore', JSON.stringify(store))
+    }) 
+    
+
+    socket.on('addRoom', res => {
+        const {roomID, userinfo} = JSON.parse(res)
+        let store = centerStore.getStore(roomID)
+        store.peoples.push(userinfo)
+        socketStore.set(socket, store)
+        socket.join(roomID)
+        socket.emit('getStore', JSON.stringify(store))
+
     })
 
-    // socket.on('test', r => {
-    //     console.log(r)
-    //     ser.instance.emit('test2', r)
-    // })
-    
+    socket.on('pushDate', data => { 
+        const { updates, version } = JSON.parse(data)
+        let store = socketStore.get(socket)
+        store.updates.push(updates)
+        const roomID = Array.from(socket.rooms)[1]
+        ser.instance.to(roomID).emit('dates', JSON.stringify({ states: updates }))
 
-    
 
-
+    })
+    socket.on('getStore2', _ => {
+        let store = socketStore.get(socket)
+        socket.emit('getStore', JSON.stringify(store))
+    })
 
     socket.on('disconnect', () => {
-        console.log('有断开')
+        socketStore.delete(socket)
     })
 })
 
