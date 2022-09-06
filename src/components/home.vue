@@ -22,26 +22,21 @@
 
             <div class="search">
                 <i></i>
-                <input placeholder="请输入房间ID" type="text">
-                <button>加入房间</button>
+                <input v-model="roomID" placeholder="请输入房间ID" type="text">
+                <button @click="addRoom">加入房间</button>
             </div>
             <button @click="createHourse">创建房间</button>
             <button>运行代码</button>
             <div class="user">
                 <i></i>
-                <input placeholder="请输入你的昵称" type="text">
+                <input :disabled="disname" @mouseleave="handleOut" v-model="userinfo.username"
+                    placeholder="请输入你的昵称(仅可输入一次)" type="text">
             </div>
-            <div class="status">
-                <div @click="changeConnectStatus" id="switch" class="switch"
-                    :style="{ backgroundColor: connectStatus ? '#42E83A' : '#FF493F' }">
-                    <div :style="{ marginLeft: connectStatus ? '26px' : '1px', }" class="block"></div>
-                </div>
-                <label>{{ connectStatus ? '连接' : '断开' }}</label>
-            </div>
+            <i class="status-connect" :style="{ backgroundColor: connectStatus ? '#42E83A' : '#FF493F' }"></i>
             <div class="status">
                 <div @click="changeSyncStatus" id="switch" class="switch"
                     :style="{ backgroundColor: syncStatus ? '#42E83A' : '#FF493F' }">
-                    <div :style="{ marginLeft: syncStatus ? '26px' : '1px', }" class="block"></div>
+                    <div :style="{ marginLeft: syncStatus ? '16px' : '1px', }" class="block"></div>
                 </div>
                 <label>{{ syncStatus ? '同步' : '暂停' }}</label>
             </div>
@@ -54,37 +49,106 @@
 import { EditorView, basicSetup } from 'codemirror';
 import { indentWithTab } from "@codemirror/commands";
 import { keymap } from "@codemirror/view";
-import { ref, nextTick, watchEffect } from 'vue';
+import { ref, nextTick, reactive } from 'vue';
 import { pick } from '../theme/pick';
 import Dialog from './Dialog.vue';
 import { Server } from '../socket/index'
 import { useUser } from '../utils/other'
 // @ts-ignore
 import { javascript } from "@codemirror/lang-javascript";
-import { EditorSelection, EditorState, ChangeSet } from '@codemirror/state';
+import { EditorSelection, EditorState, ChangeSet, Text } from '@codemirror/state';
 import { collab, Update, getSyncedVersion, receiveUpdates, sendableUpdates } from '@codemirror/collab';
-import { setListener, pack } from '../edit/index'
+import { setListener, pack, Dep } from '../edit/index'
+import { emit } from 'process';
 const edit = ref<HTMLDivElement>();
 let serve = new Server('ws://localhost:8022/system')
 let view: EditorView | null = null
 let startVersion = 0
+const userinfo = reactive<{
+    username: string;
+    userID: string;
+}>({
+    username: '',
+    userID: ''
+})
+
+const connectStatus = ref<boolean>(false)
+serve.on('isconnection', () => {
+    connectStatus.value = true
+    console.log('已连接')
+})
+
+
+const disname = ref<boolean>(false)
+const handleOut = () => {
+    if (userinfo.username.trim() === '') {
+        userinfo.username = ""
+        return
+    }
+    disname.value = true
+    userinfo.userID = useUser()
+}
+
+
+
+const dispatch = async (value: any) => {
+    view?.dispatch(receiveUpdates(view.state, [{
+        changes: ChangeSet.fromJSON(value!.changes),
+        clientID: value!.clientID
+    }]))
+}
+
+let disConnectTemp: storeItem[] = []
+
+
+type storeItem = {
+    _type?: string;
+    clientID: string;
+    changes: any;
+}
+let local = new Dep<storeItem>(async (value: storeItem) => {
+    if ('_type' in value) {
+        // console.log(value)
+        serve.emit('pushDate', {
+            version: startVersion,
+            updates: {
+                clientID: value.clientID,
+                changes: value.changes,
+            }
+        })
+    } else {
+        await dispatch(value)
+    }
+
+})
 
 let updates = pack([], (item) => {
-    if(item.update.length === 0)return
+    if (item.update.length === 0) return
     if (startVersion !== item.version) {
         startVersion = item.version
     }
-    
-
     const update = item.update.slice(-1)
-    serve.emit('pushDate', {
-        version: startVersion,
-        updates: {
+    if (syncStatus.value) {
+        local.push({
+            _type: 'local',
             clientID: update[0].clientID,
             changes: update[0].changes.toJSON()
-        }
-    })
-    // serve.emit('test', '3')
+        })
+    } else {
+        disConnectTemp.push({
+            _type: 'local',
+            clientID: update[0].clientID,
+            changes: update[0].changes.toJSON()
+        })
+    }
+
+    // serve.emit('pushDate', {
+    //     version: startVersion,
+    //     updates: {
+    //         clientID: update[0].clientID,
+    //         changes: update[0].changes.toJSON()
+    //     }
+    // })
 
 
 
@@ -101,45 +165,53 @@ const plugin = setListener(updates, (v) => {
 })
 
 
+
+
+serve.on('dates', (data) => {
+    const { states } = data
+    // console.log(states)
+    // Object.assign(states, {changes: ChangeSet.fromJSON(states.changes),})
+    local.push(states)
+})
+
+
+
 nextTick(() => {
     view = new EditorView({
-        doc: '这是',
+        doc: '',
         extensions: [basicSetup, collab({ startVersion }), pick, keymap.of([indentWithTab]), javascript(), plugin],
         parent: edit.value,
     })
 
-    serve.on('dates', (res: string) => {
-        let { states } = JSON.parse(res)
-
-        // let updates: readonly Update[] = states.map(el => {
-        //     return {
-        //         changes: ChangeSet.fromJSON(el.changes),
-        //         clientID: el.clientID
-        //     }
-        // })
-        
-
-        view?.dispatch(receiveUpdates(view.state, [{
-                changes: ChangeSet.fromJSON(states!.changes),
-                clientID: states!.clientID
-            }]))
-    })
+    // serve.on('dates', (res: string) => {
+    //     let { states } = JSON.parse(res)
+    //     view?.dispatch(receiveUpdates(view.state, [{
+    //         changes: ChangeSet.fromJSON(states!.changes),
+    //         clientID: states!.clientID
+    //     }]))
+    // })
 
 })
 
-const connectStatus = ref<boolean>(false)
 
-const changeConnectStatus = function () {
-    connectStatus.value = !connectStatus.value
-    if (connectStatus.value) {
-        serve = new Server('ws://localhost:8022/system')
-    } else {
-        serve?.close()
-    }
-}
 const syncStatus = ref<boolean>(false)
 const changeSyncStatus = function () {
     syncStatus.value = !syncStatus.value
+    if (syncStatus.value) {
+       
+        serve.emit('getStore2', {})
+        disConnectTemp.forEach(el => {
+            serve.emit('pushDate', {
+                version: startVersion,
+                updates: {
+                    clientID: el.clientID,
+                    changes: el.changes,
+                }
+            })
+        })
+        disConnectTemp = []
+
+    }
 }
 
 
@@ -150,6 +222,11 @@ const changeDialogStatus = (status: boolean) => {
     dialogStatus.value = status
 }
 const createHourse = () => {
+    let name = userinfo.username.trim()
+    if (name === '') {
+        alert('请先输入用户名')
+        return
+    }
     changeDialogStatus(true)
 }
 
@@ -161,8 +238,62 @@ const createHourse = () => {
 
 const putHourseInfo = (name: string) => {
     if (!serve) return
+    serve.emit('createRoom', {
+        roomName: name,
+        version: startVersion,
+        admin: {
+            name: userinfo.username,
+            ID: userinfo.userID,
+        }
+    })
+    syncStatus.value = true
     changeDialogStatus(false)
 }
+
+const roomInfo = reactive<{
+    id?: string;
+    roomname?: string;
+}>({})
+serve.on('roomInfo', res => {
+    console.log(res)
+    const { id, roomname } = res as {
+        id?: string;
+        roomname?: string;
+    }
+    roomInfo.id = id
+    roomInfo.roomname = roomname
+    serve.emit('StoreInfo', {roomID: id})
+})
+serve.on('getStore', (data) => {
+    console.log(data)
+    const {updates:store} = data
+    // console.log(store)
+    if (Array.isArray(store) && store.length !== 0) {
+        local.data = store
+        store.forEach(el => {
+            dispatch(el)
+        })
+    }
+})
+
+
+const roomID = ref<string>('')
+const addRoom = () => {
+    let name = userinfo.username.trim()
+    if (name === '') {
+        alert('请先输入用户名')
+        return
+    }
+    serve.emit('addRoom', {
+        roomID: roomID.value.trim(),
+        userinfo:{
+            name: userinfo.username,
+            ID: userinfo.userID,
+        }
+    })
+    syncStatus.value = true
+}
+
 </script>
 <style lang="scss" scoped>
 @mixin bgc() {
@@ -424,25 +555,32 @@ aside {
             }
         }
 
+        .status-connect {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 15px;
+        }
+
         .status {
             margin-left: 20px;
-            width: 100px;
+            width: 70px;
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: space-between;
 
             .switch {
-                width: 50px;
-                height: 20px;
+                width: 32px;
+                height: 14px;
                 border-radius: 10px;
                 // background-color: #fff;
                 transition: all 0.5s;
 
                 .block {
                     margin-top: 1px;
-                    width: 23px;
-                    height: 18px;
+                    width: 15px;
+                    height: 12px;
                     border-radius: 10px;
                     background-color: #2A0D2E;
                     margin-left: 1px;
