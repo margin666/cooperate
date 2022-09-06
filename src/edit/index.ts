@@ -14,11 +14,25 @@ export function pack(target: [], callback?: (arr: any) => void) {
             if (key !== 'length') {
                 callback && callback(value)
             }
-
             const result = Reflect.set(target, key, value)
             return result
         }
     })
+}
+
+export class Dep<T>{
+    private callback:Function;
+    public data:T[]
+    constructor(cb:Function, data:T[] = []){
+        this.callback = cb
+        this.data = data
+    }
+    async push(value:T){
+        await this.callback(value)
+        this.data.push(value)
+    }
+    
+    
 }
 
 export function setListener(updates: updatesType, cb:(v:EditorView) => void) {
